@@ -1,0 +1,101 @@
+
+//Check if user changed the Week dropdown after pulling the data
+If(varWeekPulled <> dropWeek.Selected.Value,
+    Notify("Error: The data was pulled for week no. '" & varWeekPulled &"' but the week dropdown has been changed to '" & dropWeek.Selected.Value & "'. Kindly set the dropdown back to week no. '" & varWeekPulled &"' and try again.",NotificationType.Warning,3000);
+,
+
+    //Declaring variables
+        Set(varFileExisitFlag, false);
+
+    //If there are any unsaved changes then do not Export.
+    If (CountRows(colGridDataEdited) > 0,
+        
+        Notify("ERROR: There are some unsaved changes. Kindly save and try again." ,NotificationType.Error, 5000),
+
+        // Get latest data from SharePoint
+            Select(btn_CodingForJoiningExcelAndListdata);
+
+        // Function to call the flow
+            Set(EnvVar1, txtEnv.Text);
+
+        // Step 1: Create the initial collections
+        // Adding column CSV_KEY to the collection fl_final
+            ClearCollect(fl_callup1,AddColumns(fl_final,CSV_KEY,STUDIO,EVE_CODE,If(Find("EVE",SHOOT_TIME)>0,1,0))); //Added EVE_CODE column Prabahar 19-Mar-2025
+
+        // Adding column 'DIVISION/MODEL TYPE' to the collection fl_final which is concat of Gender and Range columns
+            ClearCollect(fl_callup2,AddColumns(fl_callup1,'DIVISION/MODEL TYPE', If(IsBlank(Gender)," ",Gender) & " " & If(IsBlank(Range)," ",Range)));  
+
+        // Removing FLAG for NMA (Non Model Accessories) in SHOOT_TUPE  //Added by Salih on 5-Dec-2024
+            ForAll(fl_callup2,If(Find("nma", Lower(SHOOT_TYPE)) > 0,Patch(fl_callup2,ThisRecord,{FLAGS: ""})));
+
+        // Adding column 'SHOOT DETAIL' to the collection fl_final which is concat of 'SHOOT_TYPE','FLAGS' and 'Comments'columns
+            ClearCollect(fl_callup3,AddColumns(fl_callup2,'SHOOT DETAIL', SHOOT_TYPE & If(IsBlank(FLAGS)," "," - " & FLAGS) & If(IsBlank(Comments)," "," - " & Comments))); 
+
+        // Defining columns to show in collection fl_callup4 (from 1fl_callup3 which is addition of required columns and fl_final)
+            ClearCollect(fl_callup4,ShowColumns(fl_callup3,CSV_KEY,STUDIO,'DIVISION/MODEL TYPE','SHOOT DETAIL','MODEL FAMILY','END USE',SHOOT_TIME,Model_Name,Schedule_Date,Schedule_Day));
+
+        // Step 2: Group by STUDIO and Schedule_Date
+            ClearCollect(fl_callup5, GroupBy(fl_callup4, STUDIO, Schedule_Date, groupedData));
+
+        // Step 3: Concatenate distinct values for other columns
+            ClearCollect(fl_callup6,
+                ForAll(fl_callup5,
+                    {
+                        //STUDIO: Substitute(STUDIO, ".", "_"),
+                        //CSV_KEY:Substitute(STUDIO, ".", "_"),
+                        STUDIO:STUDIO,
+                        CSV_KEY:STUDIO,
+                        DATE:Schedule_Date,
+                        DIVISION_MODEL_TYPE: Concat(Distinct(groupedData, 'DIVISION/MODEL TYPE'), Value, "/ "),
+                        SHOOT_DETAIL: Concat(Distinct(groupedData, 'SHOOT DETAIL'), Value, "/ "),
+                        MODEL_FAMILY: Concat(Distinct(groupedData, 'MODEL FAMILY'), Value, "/ "),
+                        END_USE: Concat(Distinct(groupedData, 'END USE'), Value, "/ "),
+                        DAY: Concat(Distinct(groupedData, SHOOT_TIME), Value, "/ "),
+                        'MODEL NAME': Concat(Distinct(groupedData, Model_Name), Value, "/ "),
+                        'DAY NAME': Concat(Distinct(groupedData, Schedule_Day), Value, "/ ")
+                    }
+                )
+            );
+
+        ClearCollect(fl_callup,fl_callup6); 
+
+        // Split the data day wise and store it in respective day's collections
+            ClearCollect(dataMon,Filter(fl_callup, Text(DATE,"dd/mm/yyyy") = dateMon && 'DAY NAME' = "Mon"));
+            ClearCollect(dataTue,Filter(fl_callup, Text(DATE,"dd/mm/yyyy") = dateTue && 'DAY NAME' = "Tue"));
+            ClearCollect(dataWed,Filter(fl_callup, Text(DATE,"dd/mm/yyyy") = dateWed && 'DAY NAME' = "Wed"));
+            ClearCollect(dataThu,Filter(fl_callup, Text(DATE,"dd/mm/yyyy") = dateThu && 'DAY NAME' = "Thu"));
+            ClearCollect(dataFri,Filter(fl_callup, Text(DATE,"dd/mm/yyyy") = dateFri && 'DAY NAME' = "Fri"));
+
+        // Definining the file name as required to sumbit in format example "20231101_CALLSHEET_DATA"
+            Set(fileNameMon, First(Distinct(dataMon, Text(DateValue(DATE), "yyyymmdd")).Value).Value & "_CALLSHEET_DATA");
+            Set(fileNameTue, First(Distinct(dataTue, Text(DateValue(DATE), "yyyymmdd")).Value).Value & "_CALLSHEET_DATA");
+            Set(fileNameWed, First(Distinct(dataWed, Text(DateValue(DATE), "yyyymmdd")).Value).Value & "_CALLSHEET_DATA");
+            Set(fileNameThu, First(Distinct(dataThu, Text(DateValue(DATE), "yyyymmdd")).Value).Value & "_CALLSHEET_DATA");
+            Set(fileNameFri, First(Distinct(dataFri, Text(DateValue(DATE), "yyyymmdd")).Value).Value & "_CALLSHEET_DATA");
+
+        // Convert dataMon to JSON format and store it in JSONDataMon
+            Set(JSONDataMon, JSON(dataMon));
+            Set(JSONDataTue, JSON(dataTue));
+            Set(JSONDataWed, JSON(dataWed));
+            Set(JSONDataThu, JSON(dataThu));
+            Set(JSONDataFri, JSON(dataFri));
+
+        // Execute the export call sheet function with the JSON data, environment variable, file name, and a check for file existence
+            Set(fl_exp_response_all,CPO_SSO_FLW_EXPORT_CALLSHEET2.Run(JSONDataMon, EnvVar1, fileNameMon,"CheckIfFileExist"));
+            //Set(fl_exp_response_all,CPO_SSO_FLW_EXPORT_CALLSHEET2.Run(JSONDataTue, EnvVar1, fileNameTue,"CheckIfFileExist"));
+            //Set(fl_exp_response_all,CPO_SSO_FLW_EXPORT_CALLSHEET2.Run(JSONDataWed, EnvVar1, fileNameWed,"CheckIfFileExist"));
+            //Set(fl_exp_response_all,CPO_SSO_FLW_EXPORT_CALLSHEET2.Run(JSONDataThu, EnvVar1, fileNameThu,"CheckIfFileExist"));
+            //Set(fl_exp_response_all,CPO_SSO_FLW_EXPORT_CALLSHEET2.Run(JSONDataFri, EnvVar1, fileNameFri,"CheckIfFileExist"));
+            Set(fl_exp_response,fl_exp_response_all.response);
+
+            If(Trim(fl_exp_response) = Trim("Checked file: It's available"),
+                Set(varFileExisitFlag,true);
+            );
+        
+            Set(ShowPopupSubmit,true);
+            Navigate(PopupSubmit);
+
+
+
+        )
+)
