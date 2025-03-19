@@ -42,8 +42,18 @@ If(varWeekPulled <> dropWeek.Selected.Value,
 
         // Step 3: Concatenate distinct values for other columns 
         //Introduced a If condition to include EVE section Prabahar 19-Mar-2025
+
+            Set(eveCounter, 1);
+            Set(currentDay, "");
+            SortByColumns(fl_callup5,"Schedule_Day",SortOrder.Ascending);
+
             ClearCollect(fl_callup6,
                 ForAll(fl_callup5,
+                    /*With(
+                        {
+                            eveCounter: If(currentDay <> ThisRecord.Schedule_Day,1,eveCounter+1),
+                            currentDay: ThisRecord.Schedule_Day
+                        },*/
                         If(SHOOT_TIME = "EVE",
                         {
                             //STUDIO: Substitute(STUDIO, ".", "_"),
@@ -51,6 +61,7 @@ If(varWeekPulled <> dropWeek.Selected.Value,
                             STUDIO:STUDIO,
                             //CSV_KEY:STUDIO,
                             CSV_KEY:"1",
+                            //CSV_KEY: (eveCounter+1),
                             DATE:Schedule_Date,
                             DIVISION_MODEL_TYPE: 'DIVISION/MODEL TYPE',
                             SHOOT_DETAIL: 'SHOOT DETAIL',
@@ -75,6 +86,7 @@ If(varWeekPulled <> dropWeek.Selected.Value,
                             'DAY NAME': Concat(Distinct(groupedData, Schedule_Day), Value, "/ ")
                         }
                         )
+                   //)
                 )
             );
 
